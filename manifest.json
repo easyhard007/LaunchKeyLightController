@@ -1,7 +1,7 @@
 {
-  "name": "Launchkey Station",
-  "short_name": "LK Station",
-  "description": "Launchkey Mini MK4 极客工作站",
+  "name": "Launchkey Mini 37 Light Station",
+  "short_name": "LaunchkeyRGB",
+  "description": "Launchkey Mini 37 灯光工作站",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#121212",
