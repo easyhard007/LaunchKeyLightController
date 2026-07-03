@@ -2,47 +2,62 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 关键修改 1：viewport-fit=cover 强制铺满屏幕 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
     <title>Launchkey Mini 37 灯光工作站</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#aa00ff">
+    
     <link rel="icon" type="image/png" href="icon.png">
+    <link rel="manifest" href="manifest.json">
+    <!-- 关键修改 2：主题色改成黑色 -->
+    <meta name="theme-color" content="#121212">
     <link rel="apple-touch-icon" href="icon.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- 苹果系统强制黑底栏 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <style>
-        body { font-family: -apple-system, sans-serif; background-color: #121212; color: #fff; text-align: center; padding: 10px; margin: 0; }
-        h2 { color: #00d2ff; }
-        .card { background: #1e1e1e; padding: 20px; border-radius: 12px; margin: 15px auto; max-width: 900px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
+        /* 关键修改 3：强制 html 和 body 黑底到底，去掉默认的 margin */
+        html, body { 
+            background-color: #121212; 
+            margin: 0; 
+            padding: 0; 
+            min-height: 100vh;
+            color: #fff; 
+            text-align: center; 
+        }
         
-        select { padding: 10px; border-radius: 8px; width: 100%; max-width: 300px; margin-bottom: 10px; }
+        /* 关键修改 4：使用安全区域 (safe-area) 防止内容被挖孔和手势条挡住 */
+        body {
+            padding-top: max(20px, env(safe-area-inset-top));
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+            box-sizing: border-box;
+        }
+
+        h2 { color: #00d2ff; margin-top: 10px; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 12px; margin: 15px auto; max-width: 900px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); width: 90%; }
+        
+        select { padding: 10px; border-radius: 8px; width: 100%; max-width: 300px; margin-bottom: 10px; background: #333; color: white; border: 1px solid #555; }
         button { padding: 12px 20px; font-size: 16px; font-weight: bold; background: #aa00ff; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 5px; }
         .stop-btn { background: #444; }
         #status { margin-top: 10px; color: #aaa; font-size: 14px; }
 
-        /* --- 钢琴键盘 CSS 开始 --- */
+        /* 钢琴键盘 CSS (保持不变) */
         #pressed-notes { font-size: 20px; font-weight: bold; color: #ff5252; margin-bottom: 15px; min-height: 24px; }
-        
         #keyboard-wrapper { width: 100%; overflow-x: auto; padding-bottom: 10px; }
         #keyboard { display: flex; justify-content: center; min-width: 800px; user-select: none; }
-        
         .key { position: relative; box-sizing: border-box; }
-        
-        /* 白键 */
         .white-key { width: 40px; height: 160px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 0 0 6px 6px; z-index: 1; }
-        /* 黑键：利用负边距挤在白键中间 */
         .black-key { width: 26px; height: 100px; background: #222; border-radius: 0 0 4px 4px; margin-left: -13px; margin-right: -13px; z-index: 2; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
-        
-        /* 红点样式 */
         .dot { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 14px; height: 14px; background: #ff2a2a; border-radius: 50%; display: none; box-shadow: 0 0 8px #ff2a2a; }
-        .black-key .dot { bottom: 10px; } /* 黑键的红点稍微靠上一点 */
-
-        /* 按下时的激活状态 */
+        .black-key .dot { bottom: 10px; }
         .active.white-key { background: #e0e0e0; border-bottom: 4px solid #aaa; }
         .active.black-key { background: #111; }
-        .active .dot { display: block; } /* 激活时显示红点 */
-        /* --- 钢琴键盘 CSS 结束 --- */
+        .active .dot { display: block; }
     </style>
 </head>
+    
 <body>
 
     <h2>Launchkey Mini 37 灯光工作站</h2>
