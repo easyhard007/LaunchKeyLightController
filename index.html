@@ -295,10 +295,28 @@
         }
 
         function handleMIDIInput(event) {
-            const [status, note, velocity] = event.data; const cmd = status >> 4; const channel = status & 0x0F;
-            if (channel === 15) return; 
-            if (cmd === 9 && velocity > 0) { activeNotes.add(note); updateKeyboardUI(note, true); } 
-            else if (cmd === 8 || (cmd === 9 && velocity === 0)) { activeNotes.delete(note); updateKeyboardUI(note, false); }
+            const [status, note, velocity] = event.data; 
+            const cmd = status >> 4; 
+            const channel = status & 0x0F;
+            if (channel === 15) return; // 过滤通道16控制信号
+
+            // Note On (按下琴键)
+            if (cmd === 9 && velocity > 0) { 
+                activeNotes.add(note); 
+                updateKeyboardUI(note, true); 
+                
+                // === 核心接入：调用灯光触发函数 ===
+                // 如果处于接管状态，触发 16 个 Pad 的灯光包络
+                if (window.isRunning && typeof triggerPadLights === 'function') {
+                    triggerPadLights();
+                }
+
+            } 
+            // Note Off (松开琴键) - 现阶段不阻断衰减，只更新UI
+            else if (cmd === 8 || (cmd === 9 && velocity === 0)) { 
+                activeNotes.delete(note); 
+                updateKeyboardUI(note, false); 
+            }
         }
 
         function startControl() {
