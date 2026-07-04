@@ -13,29 +13,54 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    <!-- 1. 引入 Tonal.js -->
+    <!-- 1. 引入第三方库 -->
     <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
-    <!-- 2. 引入我们剥离出的和弦检测引擎 -->
+    <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
+    
+    <!-- 2. 引入解耦后的模块 -->
     <script src="chord_detection.js"></script>
+    <script src="light_control.js"></script>
 
     <style>
-        :root { --wk-width: 40px; --bk-width: 26px; --bk-margin: -13px; }
+        :root { --wk-width: 40px; --bk-width: 26px; --bk-margin: -13px; --pad-gap: 5px; }
+        
         html, body { background-color: #121212; margin: 0; padding: 0; min-height: 100dvh; color: #fff; text-align: center; overflow: hidden; }
         body { padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom)); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); box-sizing: border-box; display: flex; flex-direction: column; }
         h2 { color: #00d2ff; margin-top: 10px; margin-bottom: 5px;}
         .card { background: #1e1e1e; padding: 15px; border-radius: 12px; margin: 10px auto; max-width: 900px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); width: 90%; }
         
-        /* 核心修改：固定高度 86px，内部使用 Flex 布局 */
-        #pressed-notes { 
-            background: #2a2a2a; border-radius: 8px; margin-bottom: 15px; 
-            height: 86px; width: 100%; box-sizing: border-box;
-            display: flex; flex-direction: column; overflow: hidden;
+        /* 物理虚拟 Pad 矩阵 */
+        #pad-matrix {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: var(--pad-gap); 
+            margin-bottom: 20px; 
+        }
+        .v-pad {
+            background-color: #636363; 
+            aspect-ratio: 1 / 1;       
+            border-radius: calc(var(--pad-gap) * 0.2); 
+            box-shadow: inset 0 0 8px #4a4a4a; /* 深灰色内阴影 */
+            position: relative;
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+        }
+		.v-pad-light {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            mix-blend-mode: screen; 
+            mix-blend-mode: plus-lighter; 
+            pointer-events: none;
+            z-index: 1;
+            /* 核心修复：在光晕图层最上方加上黑色内阴影，强制压暗边缘的光晕 */
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);
         }
 
+        /* 钢琴与和弦 UI */
+        #pressed-notes { background: #2a2a2a; border-radius: 8px; margin-bottom: 15px; height: 86px; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
         #keyboard-wrapper { width: 100%; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
         #keyboard-wrapper::-webkit-scrollbar { display: none; } 
         #keyboard { display: flex; width: max-content; user-select: none; }
-        
         .key { position: relative; box-sizing: border-box; }
         .white-key { width: var(--wk-width); min-width: var(--wk-width); height: 140px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 0 0 6px 6px; z-index: 1; }
         .black-key { width: var(--bk-width); min-width: var(--bk-width); height: 85px; background: #222; border-radius: 0 0 4px 4px; margin-left: var(--bk-margin); margin-right: var(--bk-margin); z-index: 2; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
@@ -44,6 +69,9 @@
         .active.white-key { background: #e0e0e0; border-bottom: 4px solid #aaa; }
         .active.black-key { background: #111; }
         .active .dot { display: block; }
+
+        /* 调色盘与组件 */
+        #color-picker-container { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 10px; }
 
         #fab-btn { position: fixed; bottom: max(30px, env(safe-area-inset-bottom)); left: max(30px, env(safe-area-inset-left)); width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: none; color: #fff; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; z-index: 900; }
         #fab-btn.success { color: #00e676; }
@@ -61,36 +89,81 @@
 
     <div id="main-page">
         <h2>Launchkey Mini 37 灯光工作站</h2>
+        
         <div class="card" id="piano-card">
-            <!-- 和弦显示面板 -->
+            <!-- 模块1：虚拟 Pad 矩阵 -->
+            <div id="pad-matrix"></div>
+
+            <!-- 模块2：和弦监控 -->
             <div id="pressed-notes">
                 <div style="height:100%; display:flex; justify-content:center; align-items:center; color:#666; font-size:16px;">等待弹奏...</div>
             </div>
+            
+            <!-- 模块3：钢琴键盘 -->
             <div id="keyboard-wrapper">
                 <div id="keyboard"></div>
             </div>
         </div>
+
+        <div class="card" id="color-card">
+            <h3 style="color:#d500f9; margin-top:0;">🎨 全局灯光控制</h3>
+            <div id="color-picker-container"></div>
+        </div>
+
         <div id="fab-btn" onclick="openSettings()">?</div>
     </div>
 
-    <!-- ... (设置页面 HTML 不变) ... -->
+    <!-- 设置页面 -->
     <div id="settings-page">
         <button id="back-btn" onclick="closeSettings()">⬅ 返回</button>
         <h2 style="color: #d500f9;">⚙️ 设置</h2>
         <div class="card" style="margin-top: 30px;">
-            <select id="midiPorts" onchange="selectPort()"><option value="">请求 MIDI 权限中...</option></select>
+            <p style="color:white; font-size: 14px; margin-bottom: 20px;">请选择 DAW 端口并点击启动</p>
+            <select id="midiPorts" onchange="selectPort()">
+                <option value="">请求 MIDI 权限中...</option>
+            </select>
             <br>
-            <button class="action-btn" onclick="startVisualizer()">🎤 启动</button>
-            <button class="action-btn stop-btn" onclick="stopVisualizer()">⏹ 停止</button>
+            <button class="action-btn" onclick="startControl()">🟢 启动</button>
+            <button class="action-btn stop-btn" onclick="stopControl()">⏹ 停止</button>
             <div id="status">等待操作...</div>
         </div>
     </div>
 
     <script>
-        let midiAccess = null, midiOutput = null, audioContext = null, analyser = null, microphone = null, isRunning = false;
+        // ================= 全局状态与常量 =================
+        // 这些全局变量会被 light_control.js 读取
+        window.midiAccess = null;
+        window.midiOutput = null;
+        window.isRunning = false;
+
         let activeNotes = new Set(); 
-        const TOP_PADS = [96, 97, 98, 99, 100, 101, 102, 103]; const BOTTOM_PADS = [112, 113, 114, 115, 116, 117, 118, 119];
         const NOTE_START = 24; const NOTE_END = 96; const VISIBLE_WHITE_KEYS = 21; 
+
+        // ================= UI 初始化与布局计算 =================
+        function initPadMatrixDOM() {
+            const matrix = document.getElementById('pad-matrix');
+            matrix.innerHTML = '';
+            for(let i = 0; i < 16; i++) {
+                const pad = document.createElement('div'); pad.className = 'v-pad';
+                const light = document.createElement('div'); light.className = 'v-pad-light'; light.id = `vpad-light-${i}`; 
+                pad.appendChild(light); matrix.appendChild(pad);
+            }
+        }
+
+        // 精准计算 CSS 变量
+        function calculateAndInjectDimensions() {
+            const wrapper = document.getElementById('keyboard-wrapper');
+            const wkWidth = wrapper.clientWidth / VISIBLE_WHITE_KEYS;
+            document.documentElement.style.setProperty('--wk-width', `${wkWidth}px`);
+            document.documentElement.style.setProperty('--bk-width', `${wkWidth * 0.65}px`);
+            document.documentElement.style.setProperty('--bk-margin', `-${wkWidth * 0.325}px`);
+
+            const matrix = document.getElementById('pad-matrix');
+            if(matrix && matrix.clientWidth) {
+                const padGap = matrix.clientWidth / 71;
+                document.documentElement.style.setProperty('--pad-gap', `${padGap}px`);
+            }
+        }
 
         function getWhiteKeyIndex(note) {
             const offsets = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6]; 
@@ -98,13 +171,10 @@
         }
 
         function initKeyboardDOM() {
-            const wrapper = document.getElementById('keyboard-wrapper');
             const keyboardDiv = document.getElementById('keyboard');
             keyboardDiv.innerHTML = '';
-            const wkWidth = wrapper.clientWidth / VISIBLE_WHITE_KEYS;
-            document.documentElement.style.setProperty('--wk-width', `${wkWidth}px`);
-            document.documentElement.style.setProperty('--bk-width', `${wkWidth * 0.65}px`);
-            document.documentElement.style.setProperty('--bk-margin', `-${wkWidth * 0.325}px`);
+            
+            calculateAndInjectDimensions();
 
             for (let i = NOTE_START; i <= NOTE_END; i++) { 
                 const keyDiv = document.createElement('div'); keyDiv.id = `key-${i}`;
@@ -112,16 +182,21 @@
                 const dot = document.createElement('div'); dot.className = 'dot';
                 keyDiv.appendChild(dot); keyboardDiv.appendChild(keyDiv);
             }
+            const wrapper = document.getElementById('keyboard-wrapper');
+            const wkWidth = parseFloat(document.documentElement.style.getPropertyValue('--wk-width'));
             setTimeout(() => wrapper.scrollLeft = getWhiteKeyIndex(48) * wkWidth, 50);
         }
-        window.addEventListener('resize', initKeyboardDOM);
 
+        window.addEventListener('resize', calculateAndInjectDimensions);
+
+        // 钢琴智能滚动
         function handleAutoScroll() {
             if (activeNotes.size === 0) return;
             const notes = Array.from(activeNotes).sort((a,b) => a - b);
             const wrapper = document.getElementById('keyboard-wrapper');
             const wkWidth = parseFloat(document.documentElement.style.getPropertyValue('--wk-width'));
             if (!wkWidth) return;
+            
             const minVisibleWk = wrapper.scrollLeft / wkWidth;
             const maxVisibleWk = minVisibleWk + VISIBLE_WHITE_KEYS - 1; 
             const lowestWk = getWhiteKeyIndex(notes[0]);
@@ -135,12 +210,7 @@
             }
         }
 
-        // ==========================================
-        // 核心：处理 UI 的 60/40 黄金分割布局
-        // ==========================================
-        // ==========================================
-        // 核心：处理 UI 的 60/40 黄金分割布局 (已修复高度跳动与基线对齐)
-        // ==========================================
+        // ================= 核心：和弦展示 60/40 =================
         function updateKeyboardUI(note, isPressed) {
             const keyDiv = document.getElementById(`key-${note}`);
             if (keyDiv) {
@@ -152,76 +222,78 @@
             const textDiv = document.getElementById('pressed-notes');
             const notesArr = Array.from(activeNotes).sort((a,b) => a - b);
             
-            // 没按键时，依然保持 60% 的固定位置占位，防止跳动
             if (notesArr.length === 0) {
-                textDiv.innerHTML = `
-                    <div style="height: 60%; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px;">
-                        <span style="color:#666; font-size:16px;">等待弹奏...</span>
-                    </div>
-                    <div style="height: 40%;"></div>
-                `;
+                textDiv.innerHTML = `<div style="height: 100%; display: flex; justify-content: center; align-items: center; color: #666; font-size: 16px;">等待弹奏...</div>`;
                 return;
             }
 
-            const scoredChords = detectChordSmart(notesArr);
-            const primary = scoredChords[0].name;
-
-            // 构建备选和弦的 HTML
-            let secondaryHtml = "";
-            if (scoredChords.length > 1) {
-                const secondary = scoredChords[1].name;
-                // 关键点：这里不再使用单独的 div 限定，而是直接准备 HTML 内容
-                secondaryHtml = `
-                    <span style="font-size: 12px; color: rgba(255,255,255,0.3); margin-right: 8px; font-weight: normal;">OR</span>
-                    <span style="font-size: 18px; color: #ccc; font-weight: bold;">${secondary}</span>
+            // 调用外部文件 chord_detection.js 的侦测函数
+            if (typeof detectChordSmart === 'function') {
+                const scoredChords = detectChordSmart(notesArr);
+                const primary = scoredChords[0].name;
+                let secondaryHtml = "";
+                if (scoredChords.length > 1) {
+                    secondaryHtml = `<span style="font-size: 12px; color: rgba(255,255,255,0.3); margin-right: 8px; font-weight: normal;">OR</span><span style="font-size: 18px; color: #ccc; font-weight: bold;">${scoredChords[1].name}</span>`;
+                }
+                textDiv.innerHTML = `
+                    <div style="height: 60%; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px;">
+                        <span style="font-size: 32px; font-weight: bold; color: #fff;">${primary}</span>
+                    </div>
+                    <div style="height: 40%; display: flex; align-items: baseline; justify-content: center; padding-top: 2px;">
+                        ${secondaryHtml}
+                    </div>
                 `;
             }
-
-            // 无论有没有备选和弦，60% 和 40% 的容器始终存在
-            textDiv.innerHTML = `
-                <div style="height: 60%; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px;">
-                    <span style="font-size: 32px; font-weight: bold; color: #fff;">${primary}</span>
-                </div>
-                <!-- 关键修复：align-items: baseline 保证 "OR" 和和弦名称底部文字对齐 -->
-                <div style="height: 40%; display: flex; align-items: baseline; justify-content: center; padding-top: 2px;">
-                    ${secondaryHtml}
-                </div>
-            `;
         }
-        // ================= 常规操作代码 =================
+
+        // ================= 悬浮框与设置控制 =================
         function openSettings() { document.getElementById('settings-page').classList.add('show'); }
         function closeSettings() { document.getElementById('settings-page').classList.remove('show'); }
         function updateFabState() {
             const fab = document.getElementById('fab-btn');
-            if (midiOutput && isRunning) { fab.innerText = "✓"; fab.classList.add('success'); } 
+            if (window.midiOutput && window.isRunning) { fab.innerText = "✓"; fab.classList.add('success'); } 
             else { fab.innerText = "?"; fab.classList.remove('success'); }
         }
 
+        // ================= MIDI 初始化 =================
         window.onload = () => {
-            initKeyboardDOM();
-            navigator.requestMIDIAccess({ sysex: true }).then(onMIDISuccess).catch(err => {});
+            initPadMatrixDOM(); 
+            initKeyboardDOM(); 
+            
+            // 调用外部文件 light_control.js 的取色器初始化函数
+            if (typeof initColorPicker === 'function') initColorPicker();
+
+            navigator.requestMIDIAccess({ sysex: true }).then(onMIDISuccess).catch(err => {
+                document.getElementById('status').innerText = "获取权限失败，请使用 HTTPS 环境";
+            });
         };
 
         function onMIDISuccess(access) {
-            midiAccess = access; populateMIDIOutputs();
-            for (let input of midiAccess.inputs.values()) input.onmidimessage = handleMIDIInput;
-            midiAccess.onstatechange = (e) => {
+            window.midiAccess = access; populateMIDIOutputs();
+            for (let input of window.midiAccess.inputs.values()) input.onmidimessage = handleMIDIInput;
+            window.midiAccess.onstatechange = (e) => {
                 populateMIDIOutputs();
                 if(e.port.type === "input") {
-                    for (let input of midiAccess.inputs.values()) input.onmidimessage = handleMIDIInput;
+                    for (let input of window.midiAccess.inputs.values()) input.onmidimessage = handleMIDIInput;
                 }
             };
         }
+
         function populateMIDIOutputs() {
-            const select = document.getElementById('midiPorts'); select.innerHTML = '<option value="">-- 请选择 DAW / Port 2 --</option>';
-            for (let output of midiAccess.outputs.values()) {
-                let option = document.createElement('option'); option.value = output.id; option.text = output.name; select.appendChild(option);
+            const select = document.getElementById('midiPorts');
+            const currentSelectedId = window.midiOutput ? window.midiOutput.id : select.value;
+            select.innerHTML = '<option value="">-- 请选择 DAW / Port 2 --</option>';
+            for (let output of window.midiAccess.outputs.values()) {
+                let option = document.createElement('option'); option.value = output.id; option.text = output.name; 
+                if (output.id === currentSelectedId) option.selected = true; 
+                select.appendChild(option);
             }
         }
+
         function selectPort() {
-            midiOutput = midiAccess.outputs.get(document.getElementById('midiPorts').value);
-            if(midiOutput) midiOutput.send([0x9F, 0x0C, 0x7F]); updateFabState();
+            window.midiOutput = window.midiAccess.outputs.get(document.getElementById('midiPorts').value);
         }
+
         function handleMIDIInput(event) {
             const [status, note, velocity] = event.data; const cmd = status >> 4; const channel = status & 0x0F;
             if (channel === 15) return; 
@@ -229,41 +301,26 @@
             else if (cmd === 8 || (cmd === 9 && velocity === 0)) { activeNotes.delete(note); updateKeyboardUI(note, false); }
         }
 
-        function getPurpleBrightness(volume) {
-            if (volume < 25) return { r: 0, g: 0, b: 0 };
-            let brightness = Math.floor(volume / 2); return { r: brightness, g: 0, b: brightness };
+        function startControl() {
+            if (!window.midiOutput) return alert("请先在上方选择 MIDI 端口！");
+            
+            window.midiOutput.send([0x9F, 0x0C, 0x7F]); 
+            window.isRunning = true;
+            updateFabState();
+            
+            document.getElementById('status').innerText = "已接管键盘灯光控制权"; 
+            document.getElementById('status').style.color = "#00e676";
+            
+            // 调用外部文件 light_control.js 的强制发送函数
+            if (typeof forceSendCurrentColorToMidi === 'function') forceSendCurrentColorToMidi();
         }
 
-        async function startVisualizer() {
-            if (!midiOutput || isRunning) return; 
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioContext.createAnalyser(); microphone = audioContext.createMediaStreamSource(stream);
-                analyser.fftSize = 64; microphone.connect(analyser); isRunning = true; updateFabState();
-                document.getElementById('status').innerText = "运行中..."; document.getElementById('status').style.color = "#00e676";
-                updateLights();
-            } catch (err) {}
-        }
-        function stopVisualizer() {
-            isRunning = false; updateFabState();
-            if(audioContext) { audioContext.close(); audioContext = null; }
-            if(midiOutput) {
-                [...TOP_PADS, ...BOTTOM_PADS].forEach(pad => midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, 0x13, 0x01, 0x43, pad, 0, 0, 0, 0xF7]));
-                setTimeout(() => midiOutput.send([0x9F, 0x0C, 0x00]), 100);
-            }
-            document.getElementById('status').innerText = "已停止"; document.getElementById('status').style.color = "#aaa";
-        }
-        function updateLights() {
-            if (!isRunning) return;
-            const dataArray = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(dataArray);
-            for (let i = 0; i < 8; i++) {
-                let c1 = getPurpleBrightness(dataArray[i]); midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, 0x13, 0x01, 0x43, BOTTOM_PADS[i], c1.r, c1.g, c1.b, 0xF7]);
-            }
-            for (let i = 0; i < 8; i++) {
-                let c2 = getPurpleBrightness(dataArray[i + 8]); midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, 0x13, 0x01, 0x43, TOP_PADS[i], c2.r, c2.g, c2.b, 0xF7]);
-            }
-            setTimeout(updateLights, 50); 
+        function stopControl() {
+            window.isRunning = false;
+            updateFabState();
+            if(window.midiOutput) window.midiOutput.send([0x9F, 0x0C, 0x00]);
+            document.getElementById('status').innerText = "已退回普通模式"; 
+            document.getElementById('status').style.color = "#aaa";
         }
     </script>
 </body>

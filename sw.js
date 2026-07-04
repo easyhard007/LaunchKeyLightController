@@ -1,11 +1,13 @@
-const CACHE_NAME = 'launchkey-station-v1.14'; 
+const CACHE_NAME = 'launchkey-station-v2.1';
 const urlsToCache = [
   './',
   './index.html',
   './manifest.json',
   './icon.png',
-  './chord_detection.js', // 新增！把我们的算法文件加进缓存
-  'https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js'
+  './chord_detection.js',
+  './light_control.js', // 新增这一行！！！
+  'https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js',
+  'https://cdn.jsdelivr.net/npm/@jaames/iro@5'
 ];
 
 self.addEventListener('install', event => {
