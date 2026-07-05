@@ -208,12 +208,11 @@ function processChordsForLight(midiNotes) {
     return processedList;
 }
 
-// ... 下方的 调性识别(detectScaleSmart) 和 级数转换(getRomanNumeral) 保持完全不变 ...
 
-// ================= 2. 动态调性识别 =================
+// ================= 2. 动态调性识别 (基于 KS 算法) =================
 
-// 使用你优化的二进制大调掩码模板
-const SCALE_TEMPLATE = [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1];
+// 二进制大调+小调掩码模板（KS算法）
+const SCALE_TEMPLATE = [112.68, 4.91, 107, 7.71, 106.98, 107.62, 5.06, 109.94, 6.37, 106.35, 5.63, 106.05];
 const SCALE_VECTORS = [];
 
 for (let i = 0; i < 12; i++) {
@@ -234,19 +233,46 @@ for (let i = 0; i < 12; i++) {
 let currentPitchWeights = new Array(12).fill(0.0);
 let globalScaleRoot = "-"; 
 
+// --- 【新增：时间维度衰减机制】 ---
+let lastNoteTime = performance.now();
+
+// 每 500ms 检查一次
+setInterval(() => {
+    let now = performance.now();
+    // 如果超过 5 秒没有任何琴键按下
+    if (now - lastNoteTime > 5000) {
+        let totalWeight = currentPitchWeights.reduce((a,b) => a + b, 0);
+        // 如果权重池里还有数据，就开始持续的挂机衰减
+        if (totalWeight > 0.01) {
+            for (let i = 0; i < 12; i++) {
+                // 每 0.5 秒衰减 10% (乘以 0.9)
+                // 这样既能慢慢遗忘之前的调性，又不会导致UI瞬间断崖式清空
+                currentPitchWeights[i] *= 0.90; 
+            }
+            // 触发 UI 刷新，让 Debug 面板里的数字平滑下降
+            if (typeof refreshKeyboardUI === 'function') refreshKeyboardUI();
+        }
+    }
+}, 500);
+// ---------------------------------
+
 function registerNoteForScale(note) {
-    for (let i = 0; i < 12; i++) currentPitchWeights[i] *= 0.5;
+    // 每次弹琴，重置最后弹琴时间
+    lastNoteTime = performance.now();
+
+    for (let i = 0; i < 12; i++) currentPitchWeights[i] *= 0.98; //衰减系数
 
     let weight = 2.0 - ((note - 12) / 96.0) * 1.9;
     weight = Math.max(0.1, Math.min(2.0, weight));
-
+    
     currentPitchWeights[note % 12] += weight;
 }
 
 function getScaleDebugData() {
     let totalWeight = currentPitchWeights.reduce((a,b) => a + b, 0);
     
-    if (totalWeight < 0.05) {
+    // 降低清空阈值，因为 KS 算法的基数放大了
+    if (totalWeight < 0.1) {
         globalScaleRoot = "-";
         return { weights: currentPitchWeights, scales: [], bestText: "-" };
     }
@@ -266,7 +292,6 @@ function getScaleDebugData() {
     }
 
     scaleScores.sort((a, b) => b.score - a.score);
-    // 这里提取出的 rootName 就会是 Eb, Bb 这种正确的等音名
     globalScaleRoot = scaleScores[0].rootName; 
 
     return {
@@ -275,6 +300,7 @@ function getScaleDebugData() {
         bestText: `${scaleScores[0].majorName}大调 / ${scaleScores[0].minorName}小调`
     };
 }
+
 
 // ================= 3. 级数转换与等音纠错 =================
 

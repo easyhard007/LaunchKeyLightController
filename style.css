@@ -49,7 +49,7 @@ h2 { color: #00d2ff; margin-top: 10px; margin-bottom: 5px;}
 /* 右侧和弦调性面板 (纯白字体) */
 #light-info-section { width: 40%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 10px; box-sizing: border-box; }
 #light-chord-display { font-size: 42px; font-weight: bold; color: #fff; margin-bottom: 5px; font-family: serif; }
-#light-key-display { font-size: 16px; color: #fff; font-weight: bold; }
+#light-key-display { font-size: 20x; color: #fff; font-weight: bold; }
 
 /* === FAB 与 设置页 === */
 #fab-btn { position: fixed; bottom: max(30px, env(safe-area-inset-bottom)); left: max(30px, env(safe-area-inset-left)); width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: none; color: #fff; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; z-index: 900; }
@@ -69,3 +69,29 @@ table { width: 100%; border-collapse: collapse; color: #fff; font-size: 14px; }
 th, td { padding: 8px 12px; border-bottom: 1px solid #333; text-align: center; }
 th { color: #00d2ff; }
 tr.top-score { background-color: rgba(0, 230, 118, 0.15); font-weight: bold; }
+
+
+/* ==========================================
+   动画反馈效果 (Flash Animations)
+   ========================================== */
+
+/* 1. 向量表洗脑闪烁 (底色变黄再变回透明) */
+@keyframes flash-bg {
+    0%   { background-color: rgba(255, 235, 59, 0.8); } /* 亮黄色 */
+    10%  { background-color: rgba(255, 235, 59, 0.8); }
+    100% { background-color: #111; } /* 渐变回原本的深黑色背景 */
+}
+.flash-highlight-bg {
+    animation: flash-bg 0.6s ease-out;
+}
+
+/* 2. 调性文字闪烁 (文字变黄放大再变回白色) */
+@keyframes flash-text {
+    0%   { color: #ffeb3b; transform: scale(1.1); text-shadow: 0 0 10px #ffeb3b; }
+    10%  { color: #ffeb3b; transform: scale(1.1); text-shadow: 0 0 10px #ffeb3b; }
+    100% { color: #fff; transform: scale(1); text-shadow: none; }
+}
+.flash-highlight-text {
+    animation: flash-text 0.6s ease-out;
+    display: inline-block; /* 为了支持 transform 缩放 */
+}

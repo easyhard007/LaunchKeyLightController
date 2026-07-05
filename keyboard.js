@@ -6,6 +6,7 @@
 const NOTE_START = 24; // 渲染起点 C0
 const NOTE_END = 96;   // 渲染终点 C6
 const VISIBLE_WHITE_KEYS = 21; // 屏幕可视白键数 (3个八度)
+let lastRenderedScale = "-"; // 用于记录上一次显示的调性
 
 // ================= 1. 初始化 16 个虚拟 Pad =================
 function initPadMatrixDOM() {
@@ -137,8 +138,20 @@ function refreshKeyboardUI() {
     let scaleData = { bestText: "-", weights: new Array(12).fill(0), scales: [] };
     if (typeof getScaleDebugData === 'function') scaleData = getScaleDebugData();
 
-    // 更新 60/40 调性文本
-    keyDisplay.innerText = scaleData.bestText;
+    // 更新 60/40 调性文本，并检测是否发生转调
+    if (scaleData.bestText !== lastRenderedScale && scaleData.bestText !== "-") {
+        lastRenderedScale = scaleData.bestText;
+        keyDisplay.innerText = scaleData.bestText;
+        
+        // 【新增】：触发文字闪烁动画
+        keyDisplay.classList.remove('flash-highlight-text');
+        void keyDisplay.offsetWidth; // 强制重绘
+        keyDisplay.classList.add('flash-highlight-text');
+    } else {
+        keyDisplay.innerText = scaleData.bestText;
+    }
+	
+	
 
     // 渲染调性 Debug 面板
     if (document.getElementById('pitch-weights-row')) {
@@ -188,6 +201,12 @@ function refreshKeyboardUI() {
             
             // baseChordForRoman：用于翻译级数的降维和弦（如 Cmaj7）
             const baseChordForRoman = chordList[0].classified;
+	
+		
+            // 【新增】：将当前稳定的和弦喂给转调引擎
+            if (typeof checkAndApplyModulation === 'function') {
+                checkAndApplyModulation(baseChordForRoman);
+            }
             
             // 键盘上方的主监控区
             textDiv.innerHTML = `<div style="height: 100%; display: flex; align-items: center; justify-content: center;"><span style="font-size: 32px; font-weight: bold; color: #fff;">${primary}</span></div>`;
