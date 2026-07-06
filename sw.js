@@ -7,7 +7,7 @@ const urlsToCache = [
   './chord_detection.js',
   './light_control.js',
   './scale_chord_engine.js',
-  './audio_engine.js',
+  './virtual_piano_engine.js',
   './color_mapping.js', 
   './modulation_engine.js',
   './manifest.json',

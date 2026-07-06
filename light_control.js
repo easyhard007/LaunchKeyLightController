@@ -1,26 +1,30 @@
 // ==========================================
-// 光学与物理灯光引擎 (Light & Color Engine v5.2)
-// 修复：恢复 iro.js 调色盘，修正颜色传入断点
+// 光学与物理灯光引擎 (Light & Color Engine v5.3)
+// 完美融合版：恢复色环UI + 动效16ms + 发送33ms限速解耦
 // ==========================================
 
 const TOP_PADS = [96, 97, 98, 99, 100, 101, 102, 103]; 
 const BOTTOM_PADS = [112, 113, 114, 115, 116, 117, 118, 119];
 
 const FADE_DURATION = 500;       
-const ANIMATION_TICK = 33;       // 约 30Hz 动效帧率
+const ANIMATION_TICK = 16;       // 约 60Hz 动效帧率 (UI推波极速)
+const MIDI_SEND_TICK = 33;       // 约 30Hz 硬件发送门限 (保护 MIDI 不卡)
 const IDLE_LIGHTNESS = 0; 
+
+// === 非对称平滑引擎参数 (保留用户的精调参数) ===
+let smoothedVolume = 0.0;       
+const ALPHA_DECAY = 0.9;        // 下降平滑
+const BETA_ATTACK = 0.7;        // 爆发平滑
 
 // globalPadColors: 用于 UI 和 MIDI 发送的绝对显示颜色
 let globalPadColors = Array.from({length: 16}, () => ({ h: 0, s: 0, l: 0 }));
 
 // padLightSources: 独立光源池 (当前只用 padLightSources[0] 作为发起源)
-// 【核心变量暴露】：必须把 padLightSources 挂载到 window，让 color_mapping.js 能写入颜色！
 window.padLightSources = Array.from({length: 16}, () => ({
     userHSL: { h: 0, s: 0, l: 0 },
     envelope: 0 
 }));
 
-let lastEngineTick = 0; 
 let colorPicker = null;
 
 // === Driver 层：脏数据缓存 ===
@@ -45,6 +49,7 @@ function hslToRgb(h, s, l) {
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
+// 真正受限的 MIDI 派发器 (结合了脏数据过滤)
 function flushMidiDriver() {
     if (!window.isRunning || !window.midiOutput) return;
 
@@ -93,13 +98,6 @@ function interpolateHSL(source, target, progress) {
     return { h: currentH, s: currentS, l: currentL };
 }
 
-function applyBrightnessCurve(linearL, baseL) {
-    if (baseL <= 0 || linearL <= 0) return 0;
-    let x = 1.0 - (linearL / baseL);
-    let multiplier = 1.0 - (x * x);
-    return baseL * Math.max(0, Math.min(1, multiplier));
-}
-
 // === 动效模块 (Wave Animator) ===
 function applyWaveEffect() {
     for (let i = 7; i >= 1; i--) {
@@ -110,16 +108,7 @@ function applyWaveEffect() {
     }
 }
 
-// === 光源模块触发 ===
-function triggerPadLights() {
-    window.padLightSources[0].envelope = 1.0; 
-}
-
-function forceSendCurrentColorToMidi() {
-    triggerPadLights();
-}
-
-// === 【核心修复】：恢复调色盘渲染 ===
+// === 恢复：调色盘渲染 ===
 function initColorPicker() {
     colorPicker = new iro.ColorPicker("#color-picker-container", {
         width: 180, 
@@ -141,83 +130,96 @@ function initColorPicker() {
 
 // === 渲染主循环 ===
 let lastFrameTime = performance.now();
+let lastEngineTick = 0; 
+let lastMidiSendTick = 0; // 新增：独立的 MIDI 发送计时器
 
 function engineLoop(currentTime) {
     const deltaTime = currentTime - lastFrameTime;
     lastFrameTime = currentTime;
 
-    // 1. 光源包络衰减 (Pad 0)
+    // ==========================================
+    // 1. 触发并更新虚拟钢琴引擎
+    // ==========================================
+    if (typeof updateVirtualPianoEngine === 'function') {
+        updateVirtualPianoEngine(currentTime);
+    }
+
+    // ==========================================
+    // 2. 经过不对称平滑引擎处理 (消除抖动)
+    // ==========================================
+    let rawVolume = window.virtualAudioVolume || 0;
+    
+    if (rawVolume > smoothedVolume) {
+        smoothedVolume = smoothedVolume * BETA_ATTACK + rawVolume * (1 - BETA_ATTACK);
+    } else {
+        smoothedVolume = smoothedVolume * ALPHA_DECAY + rawVolume * (1 - ALPHA_DECAY);
+    }
+    if (smoothedVolume < 0.005) smoothedVolume = 0.0;
+
+    // ==========================================
+    // 3. 将平滑后的能量进行“向上压缩映射”注入光源
+    // ==========================================
     let sourcePad = window.padLightSources[0];
- // --------- 【旧模式：MIDI 包络衰减】 (先注释掉保留备用) ---------
-    /*
-    if (sourcePad.envelope > 0) {
-        let decrement = deltaTime / FADE_DURATION;
-        sourcePad.envelope -= decrement;
-        if (sourcePad.envelope <= 0) sourcePad.envelope = 0;
-    }
-    */
     
-    // +++++++++ 【新模式：麦克风实时驱动】 +++++++++
-    // 直接用麦克风的实时音量强制接管光能包络！
-    if (typeof window.currentAudioVolume !== 'undefined') {
-        sourcePad.envelope = window.currentAudioVolume;
-    }
-    // ++++++++++++++++++++++++++++++++++++++++++++
+    let compressedVolume = Math.pow(smoothedVolume, 0.4);
+    sourcePad.envelope = Math.max(0, Math.min(1.0, compressedVolume)); 
 
-	//将最大亮度 L 限制为 60，避免死白
     const MAX_LIGHTNESS = 60;
-	const MIN_ENVELOPE_FLOOR = 0.2; // 30% 的下限，永远不会跌破这个值
-   
-    // 我们拿到麦克风传来的物理包络 (0.0 ~ 1.0)
-    let rawEnvelope = sourcePad.envelope;
     
-    // 如果开启了控制模式 (isRunning)，强制进行兜底保护
-    if (window.isRunning) {
-        rawEnvelope = Math.max(MIN_ENVELOPE_FLOOR, rawEnvelope);
-    }
-
-    // 通过抛物线函数进行视觉修正
-    let visualEnvelope = applyBrightnessCurve(rawEnvelope * 100, 100) / 100;
-    
-    // 计算最终的亮度 (L) 和饱和度 (S)
-    let currentL = MAX_LIGHTNESS * visualEnvelope;
-    let currentS = sourcePad.userHSL.s * visualEnvelope;
+    let currentL = IDLE_LIGHTNESS + (MAX_LIGHTNESS - IDLE_LIGHTNESS) * sourcePad.envelope;
+    let currentS = sourcePad.userHSL.s * sourcePad.envelope;
     
     globalPadColors[0] = { h: sourcePad.userHSL.h, s: currentS, l: currentL };
 
-    // 因为有了 30% 的氛围底光，意味着只要接管了设备，灯光系统就必须永远运转
-    // 我们永远保持 active 状态，强制执行推流和渲染，彻底废除 forceZeroFlush 关灯机制！
-    if (window.isRunning) {
-        isAnyPadActive = true; 
+    let isAnyPadActive = (sourcePad.envelope > 0);
+    let forceIdleFlush = false;
+    
+    if (!window.isRunning) {
+        forceIdleFlush = true; 
     } else {
-        forceZeroFlush = true; // 只有在用户点击“停止”按钮时，才真正触发黑屏全关
+        isAnyPadActive = true; 
     }
 
-    // 2. 动效模块 (按 30Hz 推波)
+    // ==========================================
+    // 4. 动效模块 (按 16ms 极速推波，保证网页UI丝滑)
+    // ==========================================
     if (currentTime - lastEngineTick >= ANIMATION_TICK) {
         applyWaveEffect();
         lastEngineTick = currentTime;
     }
 
-    // 3. 渲染网页 UI
+	// 渲染网页 UI (使用用户的发光参数)
     for (let i = 0; i < 8; i++) {
         const lightDiv = document.getElementById(`vpad-light-${i}`);
         if(lightDiv) {
             let h = globalPadColors[i].h, s = globalPadColors[i].s, l = globalPadColors[i].l;
+            
+            // 【核心修复】：必须先把 HSL 转换为 RGB，再传给你的 rgba 字符串！
+            let [r8, g8, b8] = hslToRgb(h, s, l);
+            
             const stops = [
-                `hsla(${h},${s}%,${l}%, 1) 0%`,
-                `hsla(${h},${s}%,${l}%, 0.96) 10%`,
-                `hsla(${h},${s}%,${l}%, 0.84) 30%`,
-                `hsla(${h},${s}%,${l}%, 0.64) 68%`,
-                `hsla(${h},${s}%,${l}%, 0.36) 96%`,
-                `hsla(${h},${s}%,${l}%, 0) 120%`
+                `rgba(${r8},${g8},${b8}, 1) 0%`,
+                `rgba(${r8},${g8},${b8}, 0.96) 10%`,
+                `rgba(${r8},${g8},${b8}, 0.84) 30%`,
+                `rgba(${r8},${g8},${b8}, 0.64) 68%`,
+                `rgba(${r8},${g8},${b8}, 0.36) 96%`,
+                `rgba(${r8},${g8},${b8}, 0) 120%`
             ].join(', ');
+            
             lightDiv.style.background = `radial-gradient(circle farthest-corner at 50% 50%, ${stops})`;
         }
     }
 
-    // 4. 发射器 
-    flushMidiDriver();
+    // ==========================================
+    // 5. 【核心修复】发射器 (受 MIDI_SEND_TICK 33ms 限速保护)
+    // ==========================================
+    if (window.isRunning && window.midiOutput) {
+        // 只有到了 33ms 门限，或者需要强制关灯时，才触发 flushMidiDriver()
+        if (forceIdleFlush || (isAnyPadActive && currentTime - lastMidiSendTick >= MIDI_SEND_TICK)) {
+            flushMidiDriver();
+            lastMidiSendTick = currentTime;
+        }
+    }
 
     requestAnimationFrame(engineLoop);
 }

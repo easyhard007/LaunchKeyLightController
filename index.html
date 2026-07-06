@@ -25,7 +25,7 @@
 	<script src="scale_chord_engine.js"></script> 
 	<script src="modulation_engine.js"></script>
 	<script src="color_mapping.js"></script>
-	<script src="audio_engine.js"></script>
+	<script src="virtual_piano_engine.js"></script>
     <script src="light_control.js"></script>
     <script src="keyboard.js"></script>
 </head>
@@ -133,12 +133,9 @@
 
         // ================= MIDI 核心监听逻辑 =================
         function handleMIDIInput(event) {
-            const [status, data1, data2] = event.data; 
-            const cmd = status >> 4; 
-            const channel = status & 0x0F;
+            const [status, data1, data2] = event.data; const cmd = status >> 4; const channel = status & 0x0F;
             if (channel === 15) return; 
 
-            // CC64 延音踏板
             if (cmd === 11 && data1 === 64) {
                 window.isPedalDown = data2 >= 64;
                 if (!window.isPedalDown) {
@@ -149,29 +146,30 @@
                 return; 
             }
 
-            // Note On (物理按下)
             if (cmd === 9 && data2 > 0) { 
                 window.activeNotes.add(data1); 
                 if (window.isPedalDown) window.pedalHeldNotes.add(data1); 
                 else window.pedalHeldNotes.delete(data1); 
-				
-				// === 新增：将按下的音符投喂给调性引擎 ===
+                
                 if (typeof registerNoteForScale === 'function') registerNoteForScale(data1);
+                
+                // 【新增：将 MIDI 信号投喂给虚拟钢琴引擎计算能量！】
+                if (typeof triggerVirtualNoteOn === 'function') {
+                    triggerVirtualNoteOn(data1, data2);
+                }
                 
                 updateCombinedNotes();
                 if (typeof refreshKeyboardUI === 'function') refreshKeyboardUI();
-                
-                if (window.isRunning && typeof triggerPadLights === 'function') triggerPadLights(); 
             } 
-            // Note Off (物理松开)
             else if (cmd === 8 || (cmd === 9 && data2 === 0)) { 
                 window.activeNotes.delete(data1); 
                 if (window.isPedalDown) window.pedalHeldNotes.add(data1);
-                
                 updateCombinedNotes();
                 if (typeof refreshKeyboardUI === 'function') refreshKeyboardUI();
             }
         }
+
+
 
         // ================= 设置与连接 =================
         function openSettings() { document.getElementById('settings-page').classList.add('show'); }
@@ -216,24 +214,16 @@
 
         function selectPort() { window.midiOutput = window.midiAccess.outputs.get(document.getElementById('midiPorts').value); }
         
-		function startControl() {
-			if (!window.midiOutput) return alert("请先在上方选择 MIDI 端口！");
-			window.midiOutput.send([0x9F, 0x0C, 0x7F]); 
-			window.isRunning = true; 
-			updateFabState();
-			
-			// 【新增】：启动麦克风引擎
-			if (typeof startAudioEngine === 'function') startAudioEngine();
-		}
-
-		function stopControl() {
-			window.isRunning = false; 
-			updateFabState();
-			if(window.midiOutput) window.midiOutput.send([0x9F, 0x0C, 0x00]);
-			
-			// 【新增】：关闭麦克风引擎
-			if (typeof stopAudioEngine === 'function') stopAudioEngine();
-		}
+        function startControl() {
+            if (!window.midiOutput) return alert("请先在上方选择 MIDI 端口！");
+            window.midiOutput.send([0x9F, 0x0C, 0x7F]); window.isRunning = true; updateFabState();
+            if (typeof forceSendCurrentColorToMidi === 'function') forceSendCurrentColorToMidi();
+        }
+        
+        function stopControl() {
+            window.isRunning = false; updateFabState();
+            if(window.midiOutput) window.midiOutput.send([0x9F, 0x0C, 0x00]);
+        }
     </script>
 </body>
 </html>
