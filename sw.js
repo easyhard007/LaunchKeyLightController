@@ -1,4 +1,4 @@
-const CACHE_NAME = 'launchkey-station-v0.78';
+const CACHE_NAME = 'launchkey-station-v0.111';
 const urlsToCache = [
   './',
   './index.html',
