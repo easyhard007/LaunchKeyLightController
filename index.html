@@ -266,5 +266,30 @@
             statusEl.style.color = "#aaa";
         }
     </script>
+    <!-- PWA 注册与强制刷新监听 -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => {
+                        console.log('Service Worker 注册成功!', reg);
+                        
+                        // 监听新版本的到来
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                // 当新版本准备好且旧版本已被干掉时
+                                if (newWorker.state === 'activated') {
+                                    console.log('新版本已激活！正在强制刷新页面...');
+                                    // 直接硬刷新页面，加载最新代码
+                                    window.location.reload();
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => console.log('Service Worker 注册失败', err));
+            });
+        }
+    </script>
 </body>
 </html>
