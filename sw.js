@@ -2,7 +2,7 @@
 // 强制刷新版 Service Worker
 // 版本号升到 v0.112
 // ==========================================
-const CACHE_NAME = 'launchkey-station-v0.116';
+const CACHE_NAME = 'launchkey-station-v0.133';
 
 const urlsToCache = [
   './',
