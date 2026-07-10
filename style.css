@@ -146,7 +146,40 @@ h2 {
 .white-key { width: var(--wk-width); min-width: var(--wk-width); height: 100%; background: rgba(240, 240, 240, 0.9); border: 1px solid rgba(0,0,0,0.2); border-radius: 0 0 6px 6px; z-index: 1; backdrop-filter: blur(5px); }
 .black-key { width: var(--bk-width); min-width: var(--bk-width); height: 60%; background: rgba(20, 20, 20, 0.95); border-radius: 0 0 4px 4px; margin-left: var(--bk-margin); margin-right: var(--bk-margin); z-index: 2; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); backdrop-filter: blur(5px); }
 
-/* ... (省略中间的点点样式，保持不变) ... */
+/* ==========================================
+   【核心修复】：钢琴监控点 (红点与粉点)
+   强制响应式大小，强制定位，确保 100% 浮现
+   ========================================== */
+.active-red.white-key { background: #d0d0d0; border-bottom: 4px solid #888; }
+.active-red.black-key { background: #000; }
+
+/* 基础点：必须使用响应式大小和相对底部的百分比定位，防止琴键高度变化时点跑偏 */
+.dot { 
+    position: absolute; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    width: clamp(8px, 1.5vh, 14px); 
+    height: clamp(8px, 1.5vh, 14px); 
+    border-radius: 50%; 
+    display: none; /* 默认隐藏 */
+    bottom: 12%;   /* 相对高度，永远贴近琴键底部 */
+    z-index: 4; 
+}
+.black-key .dot { 
+    bottom: 15%; /* 黑键稍微靠上一点点 */
+}
+
+/* 红色：物理按下 (优先级最高) */
+.active-red .dot { 
+    display: block !important; /* 强制显示 */
+    background: #ff2a2a; 
+}
+
+/* 粉色：物理松开但被踏板保持 */
+.key:not(.active-red).active-pink .dot { 
+    display: block !important; /* 强制显示 */
+    background: #ff80ab; 
+}
 
 /* === 4. 全局灯光控制面板 === */
 #color-card {
@@ -190,7 +223,7 @@ select { padding: 12px; border-radius: 8px; width: 100%; max-width: 320px; margi
         padding: 10px;
         margin: 5px auto;
         /* 在极扁屏幕下，卡片变窄，腾出更多呼吸空间 */
-        width: 80%;
+        /* width: 80%; */
         max-width: 700px;
     }
     
@@ -203,7 +236,10 @@ select { padding: 12px; border-radius: 8px; width: 100%; max-width: 320px; margi
     /* 极端扁平 (横屏手机)：进一步压缩键盘最低限度，防止和色环打架 */
     .white-key { height: 60px; }
     .black-key { height: 35px; }
-    .card { width: 70%; padding: 5px; }
+    .card { 
+        /* width: 70%;  */
+        padding: 5px; 
+    }
 }
 
 /* ==========================================

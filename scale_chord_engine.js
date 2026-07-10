@@ -494,9 +494,7 @@ function getScaleDebugData() {
 
 
 // ================= 3. 级数转换与等音纠错 =================
-
 // 辅助函数：将和弦的根音翻转为等音名 (如 Gb 变成 F#)
-// ================= 3. 级数转换与等音纠错 =================
 
 function getEnharmonicChord(chordName) {
     const rootMatch = chordName.match(/^[A-G][#b]?/);
@@ -522,28 +520,69 @@ function getEnharmonicChord(chordName) {
 }
 
 // 核心级数翻译函数 (纯监控版，不包含强制前缀修正)
+// 核心级数翻译函数 (支持转位斜杠低音级数)
 function getRomanNumeral(chordName) {
     if (globalScaleRoot === "-") return chordName; 
 
-    try {
-        // 第一轮常规翻译
-        const romanArr = Tonal.Progression.toRomanNumerals(globalScaleRoot, [chordName]);
-        let roman = (romanArr && romanArr.length > 0) ? romanArr[0] : "";
+    // 【新增逻辑 1】：提取斜杠后缀的低音 (Bass Note)
+    let baseChord = chordName;
+    let bassNote = "";
+    
+    if (chordName.includes('/')) {
+        const parts = chordName.split('/');
+        baseChord = parts[0];
+        bassNote = parts[1]; // 如 "C", "Bb" 等
+    }
 
-        
-        // 处理重降/重升的等音翻转 (保留此底层纠错，因为 bbVIIm 这种绝对是乱码)
-        if (roman.includes('bb') || roman.includes('##')) {
-            const flippedChord = getEnharmonicChord(chordName);
+    try {
+        // --- 处理主干和弦 (baseChord) ---
+        const romanArr = Tonal.Progression.toRomanNumerals(globalScaleRoot, [baseChord]);
+        let mainRoman = (romanArr && romanArr.length > 0) ? romanArr[0] : "";
+
+        // 处理重降/重升的等音翻转
+        if (mainRoman.includes('bb') || mainRoman.includes('##')) {
+            const flippedChord = getEnharmonicChord(baseChord);
             const romanArr2 = Tonal.Progression.toRomanNumerals(globalScaleRoot, [flippedChord]);
             let roman2 = (romanArr2 && romanArr2.length > 0) ? romanArr2[0] : "";
-        
             
             if (roman2 && !roman2.includes('bb') && !roman2.includes('##')) {
-                roman = roman2;
+                mainRoman = roman2;
             }
         }
 
-        if (roman !== "") return roman;
+        // 如果主干翻译失败，直接返回原名
+        if (mainRoman === "") return chordName;
+
+        // --- 【新增逻辑 2】：如果存在转位低音，单独翻译它 ---
+        if (bassNote !== "") {
+            // Tonal 没有直接把单音翻译为级数的方法，但我们可以利用一个取巧的办法：
+            // 把这个单音当做一个大三和弦去翻译，比如 "C" 翻译出 "I"，然后我们只要前面的罗马数字
+            const bassRomanArr = Tonal.Progression.toRomanNumerals(globalScaleRoot, [bassNote]);
+            let bassRoman = (bassRomanArr && bassRomanArr.length > 0) ? bassRomanArr[0] : "";
+
+            if (bassRoman.includes('bb') || bassRoman.includes('##')) {
+                const flippedBass = getEnharmonicChord(bassNote);
+                const bassRomanArr2 = Tonal.Progression.toRomanNumerals(globalScaleRoot, [flippedBass]);
+                let bassRoman2 = (bassRomanArr2 && bassRomanArr2.length > 0) ? bassRomanArr2[0] : "";
+                if (bassRoman2 && !bassRoman2.includes('bb') && !bassRoman2.includes('##')) {
+                    bassRoman = bassRoman2;
+                }
+            }
+
+            // 【新增逻辑 3】：拼装！将翻译出来的低音级数接到主级数后面
+            if (bassRoman !== "") {
+                // 如果是单音翻译的，Tonal 会给它一个大三的壳子，比如翻译出来是 "I"
+                // 这样拼起来就完美了：iii/I
+                return `${mainRoman}/${bassRoman}`;
+            } else {
+                // 如果单音翻译失败，保留原始单音字母：iii/C
+                return `${mainRoman}/${bassNote}`;
+            }
+        }
+
+        // 如果没有斜杠，直接返回主干级数
+        return mainRoman;
+
     } catch(e) {
         console.error("[Roman Engine] 报错: ", e);
     }

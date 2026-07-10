@@ -83,10 +83,12 @@ function initKeyboardDOM() {
         const keyDiv = document.createElement('div'); keyDiv.id = `key-${i}`;
         keyDiv.className = [1, 3, 6, 8, 10].includes(i % 12) ? 'key black-key' : 'key white-key';
         
-        const dotRed = document.createElement('div'); dotRed.className = 'dot red';
-        const dotBlue = document.createElement('div'); dotBlue.className = 'dot blue';
+        // 【核心修复】：一个琴键只需要一个点！不要画蛇添足加 red/blue
+        // 它的颜色会由外部父级 div 是否拥有 .active-red 或 .active-pink 类名，通过 CSS 自动接管！
+        const dot = document.createElement('div'); 
+        dot.className = 'dot';
         
-        keyDiv.appendChild(dotRed); keyDiv.appendChild(dotBlue);
+        keyDiv.appendChild(dot);
         keyboardDiv.appendChild(keyDiv);
     }
     const wrapper = document.getElementById('keyboard-wrapper');
@@ -126,6 +128,7 @@ let chordColorDebounceTimer = null;
 let lastColoredRoman = "";
 
 function refreshKeyboardUI() {
+    
     for (let i = NOTE_START; i <= NOTE_END; i++) {
         const keyDiv = document.getElementById(`key-${i}`);
         if (!keyDiv) continue;
@@ -135,6 +138,7 @@ function refreshKeyboardUI() {
             keyDiv.classList.remove('active-red'); keyDiv.classList.add('active-pink');
         } else {
             keyDiv.classList.remove('active-red'); keyDiv.classList.remove('active-pink');
+
         }
     }
 
@@ -214,7 +218,6 @@ function refreshKeyboardUI() {
             `;
             
             if (typeof checkAndApplyModulation === 'function') checkAndApplyModulation(baseChordForRoman);
-
             const roman = getRomanNumeral(baseChordForRoman);
             if (romanDisplay) romanDisplay.innerText = roman;
 

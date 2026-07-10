@@ -139,24 +139,43 @@ function getTrueRGB(h, s, l) {
     return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
 
+//使用级数和弦判断功能级数并赋予颜色。
 function applyChordColorByNumeral(romanNumeral) {
+
     if (!romanNumeral || romanNumeral === "-") return "-"; // 返回未知状态给 keyboard.js
-    
-    // 【全新逻辑】：只提取基础级数（包含大小写，这非常重要！因为我们要区分大调的 I 和小调的 ii）
-    // 用正则提取最前面的罗马数字组：匹配连续的 I, V, X, i, v, x，忽略前缀 b/# 和后缀 maj7/m7/dim
-    const romanMatch = romanNumeral.match(/^[b#]*([IVXivx]+)/i);
+
+
     
     let targetH = 0; 
     let targetS = 100; 
     let targetL = 100; 
     let functionGroup = "-"; // 用于返回给 UI 第二行大字显示
 
-    if (romanMatch) {
-        // 提取出来的纯罗马数字（忽略了可能存在的 b 或 #）
-        // 比如 bVIImaj7 会提取出 VII。我们将其转换为标准对照格式
-        let rootRoman = romanMatch[1].toUpperCase(); 
+    let targetRomanForColor = "";
 
-        switch (rootRoman) {
+    // 【核心重构】：优先使用斜杠后的低音（Bass）来决定灯光色彩！
+    if (romanNumeral.includes('/')) {
+        // 如果存在转位，比如 "Imaj7/iii"
+        // 提取斜杠后面的部分："iii"
+        const bassRoman = romanNumeral.split('/')[1];
+        // 清洗掉所有无用的符号，只留下纯罗马数字用于 switch 匹配
+        const cleanBass = bassRoman.replace(/b|#|m|maj|sus|dim|aug|[0-9]/g, "").toUpperCase();
+        const match = cleanBass.match(/^[b#]*([IVXivx]+)/i);
+        if (match) {
+            targetRomanForColor = match[1].toUpperCase();
+        }
+    } else {
+        // 如果没有转位，使用主和弦
+        const baseRoman = romanNumeral.split('/')[0];
+        const cleanNumeral = baseRoman.replace(/b|#|m|maj|sus|dim|aug|[0-9]/g, "").toUpperCase();
+        const match = cleanNumeral.match(/^[b#]*([IVXivx]+)/i);
+        if (match) {
+            targetRomanForColor = match[1].toUpperCase();
+        }
+    }
+
+    if (targetRomanForColor!== "") {
+        switch (targetRomanForColor) {
             case "I": 
                 targetH = diatonicColors.I.h; targetS = diatonicColors.I.s; 
                 functionGroup = "I";
@@ -183,7 +202,7 @@ function applyChordColorByNumeral(romanNumeral) {
                 break;
             case "VII": 
                 targetH = diatonicColors.vii.h; targetS = diatonicColors.vii.s; 
-                functionGroup = "vii°"; // 你的绝妙设计：附加减度符号
+                functionGroup = "vii°"; // 附加减度符号
                 break;
             default: 
                 targetH = 0; targetS = 0; 

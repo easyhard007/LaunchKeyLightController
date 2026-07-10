@@ -46,7 +46,6 @@ function initBackground() {
 
     if (!container) return;
 
-    
 
     // 清理可能遗留的旧上下文
     container.innerHTML = ''; 
